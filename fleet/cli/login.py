@@ -3,8 +3,10 @@
 
 import boto3
 import configparser
+import getpass
 import os
 from warrant.aws_srp import AWSSRP
+from warrant.exceptions import ForceChangePasswordException
 
 def login(username, password):
 
@@ -22,7 +24,23 @@ def login(username, password):
         client_id = cognito['client_id'],
         client = client
     )
-    tokens = aws.authenticate_user()
+    try:
+        tokens = aws.authenticate_user()
+    except ForceChangePasswordException:
+        ntries = 3
+        while ntries > 0:
+            try:
+                ntries -= 1
+                new_password = getpass.getpass('Enter new password: ')
+                tokens = aws.set_new_password_challenge(new_password)
+                break
+            except Exception as e:
+                errormessage = e.response['ResponseMetadata']['HTTPHeaders']['x-amzn-errormessage']
+                print('\tERROR: {}'.format(errormessage))
+        if ntries == 0:
+            print('ERROR: Too many attempts to set password')
+            return {}
+    # TODO: implement PasswordResetRequiredException
 
     # Amazon Cognito Federated Identities - get credentials
     cognito_id = boto3.client('cognito-identity')
