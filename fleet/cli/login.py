@@ -6,8 +6,11 @@ import configparser
 import os
 from warrant.aws_srp import AWSSRP
 
-def login(username, password):
-
+def login(args):
+    if not args.username:
+        username = input('Enter username:')
+    password = getpass.getpass()
+    print('Printing password for testing purposes: "{}"'.format(password))
     # Parse configuration
     config = configparser.ConfigParser()
     config.read(['fleet.cfg', os.path.expanduser('~/.fleet.cfg')])
