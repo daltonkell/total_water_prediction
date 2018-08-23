@@ -1,17 +1,24 @@
 import argparse
+import configparser # built in config file parser
 import getpass
 import logging
 import os
+import requests
 import sys
 
-from login import login
+from fleet.cli.login import login
 
+# Parse configuration
+config = configparser.ConfigParser()
+config.read(['.fleet.cfg', os.path.expanduser('../../.fleet.cfg')])
+# cognito = config['cognito'] # cognito information
+# api = config['API'] # api connection information
 
 def create(args):
     """
     Creates an HPC fleet using the passed arguments.
 
-    parameters
+    Parameters
     ----------
     args :
     """
@@ -22,7 +29,7 @@ def configure(args):
     """
     Configures an HPC fleet using the passed arguments.
 
-    parameters
+    Parameters
     ----------
     args :
     """
@@ -33,151 +40,216 @@ def status(args):
     """
     Yields the status of an HPC fleet.
 
-    parameters
+    Parameters
     ----------
     args :
     """
     print('Yields HPC fleet "{}" status'.format(args))
 
 
-def list(args):
+def list(args, config):
     """
     Lists all the started and stopped HPC fleets.
 
-    parameters
+    Parameters
     ----------
-    asrgs :
-    """
-    print('Lists all HPC fleets.')
+    args : argparse.ArgumentParser parser
+           Contains the optional aguments passed in via the CLI"""
+
+    api = config['API']
+    headers = {}
+    if args.stack_name:
+        headers = {'stack-name': args.stack_name} # put stack name in headers
+    r = requests.get(api['list'], headers=headers) # send the GET request
+    print('\nThe following clusters exist:\n{}\n'.format(r.json()))
+    return
 
 
-def delete(args):
+def delete(args, config):
     """
     Deletes an HPC fleet
 
-    parameters
+    Parameters
     ----------
     args :
     """
     print('Deletes a selected HPC fleet with name "{}"'.format(args.fleet_name))
 
 
-def instances(args):
+def instances(args, config):
     """
     This definitely does something.
     """
     print('Does something? More to come.')
 
 
-def update(args):
+def update(args, config):
     """
     Updates an HPC fleet
 
-    parameters
+    Parameters
     ----------
     args :
     """
     print('Updates an HPC fleet with name "{}"'.format(args.fleet_name))
 
 
-def version(args):
+def version(args, config):
     """
     Lists the version of the HPC fleet
 
-    parameters
+    Parameters
     ----------
     args :
     """
     print('HPC fleet "{}"; version: '.format(args.fleet_name))
 
 
-def start(args):
+def start(args, config):
     """
     Starts up an HPC fleet
 
-    parameters
+    Parameters
     ----------
     args :
     """
     print('Starts an HPC fleet: "{}"'.format(args))
 
 
-def stop(args):
+def ssh(args, config):
+    """
+    Run an ssh to the master node... or something...
+
+    Parameters
+    ----------
+    args :
+    """
+    print('{}'.format(ssh.__doc__))
+
+
+def stop(args, config):
     """
     Stops an HPC fleet
 
-    parameters
+    Parameters
     ----------
     args :
     """
     print('Stops an HPC fleet "{}"'.format(args))
 
 
-# logging here?
+# logging configuration
 
+# -----------
+# CLI OPTIONS # NOTE these may be moved out eg `login()` to preserve readability
+# -----------
 
 def main():
     # call logger
-
+    # parent parser contains common options
     parser = argparse.ArgumentParser(description='fleet is a tool that can be used by IOOS modelers for HPC tasks')
-    # specify config file?
-    # specify connection region?
+    # common arguments
+    parser.add_argument('-c', '--config', type=str,
+                         help='specify an alternative configuration file')
+    parser.add_argument('-nw', '--nowait', type=str,
+                          help='Do not wait for stack events')
+    parser.add_argument('-nr', '--norollback', type=str,
+                        help='Disable stack rollback on an error')
+    parser.add_argument('-u', '--template-url',
+                        type=str, help='Supply a URL for custom template')
+    parser.add_argument('-t', '--cluster-template',
+                        type=str, help='Supply the filepath to a template')
+    parser.add_argument('-p', '--extra-parameters',
+                        type=str, help='Supply extra parameters')
+    parser.add_argument('-r', '--region', dest='region',
+                        help='specify a specific region to connect to',
+                        default=None)
     # waiting argument?
 
     subparsers = parser.add_subparsers()
     subparsers.required = True
     # subparser destination
 
+    # NOTE subparser objects cannot be named the same as their functions, or
+    # argparse will attempt to call the object as a method and break
 
-    plogin = subparsers.add_parser('login', help='Login with user credentials')
-    plogin.add_argument('username', type=str, default=None,
+    # user login
+    _login = subparsers.add_parser('login', help='Login with user credentials')
+    _login.add_argument('-u', '--user', type=str, default=None,
                        help='enter username')
-    plogin.set_defaults(func=login)
+    _login.set_defaults(func=login)
 
-    pcreate = subparsers.add_parser('create', help='Creates an HPC fleet')
-    pcreate.add_argument('fleet_name', type=str, default=None,
+    # create clusters
+    _create = subparsers.add_parser('create', help='Creates an HPC fleet')
+    _create.add_argument('--fleet_name', type=str, default=None,
                         help='create an HPC fleet with provided name')
-    pcreate.set_defaults(func=create)
+    _create.add_argument('-g TAGS', '--tags TAGS', type=str,
+                        help='Tags to be added to stack. JSON formatted\n'+\
+                        'string encapsulated by single quotes')
+    _create.set_defaults(func=create)
 
-    pupdate = subparsers.add_parser('update', help='Updates an HPC fleet')
-    pupdate.add_argument('fleet_name', type=str, default=False,
-                        help='update an HPC fleet with the provided name')
-    pupdate.set_defaults(func=update)
+    # update clusters
+    _update = subparsers.add_parser('update', help='Updates an HPC fleet')
+    _update.add_argument('--fleet_name', type=str, default=False,
+                    help='update an HPC fleet with the provided name')
+    _update.set_defaults(func=update)
 
-    pdelete = subparsers.add_parser('delete', help='Deletes an HPC fleet')
-    pdelete.add_argument('fleet_name', type=str, default=None,
+    # delete clusters
+    _delete = subparsers.add_parser('delete', help='Deletes an HPC fleet')
+    _delete.add_argument('--fleet_name', type=str, default=None,
                         help='delete an HPC fleet with the provided name')
-    pdelete.set_defaults(func=delete)
+    _delete.set_defaults(func=delete)
 
-    pstart = subparsers.add_parser('start', help='starts up an HPC fleet')
-    pstart.add_argument('fleet_name', type=str, default=None,
+    # start up clusters
+    _start = subparsers.add_parser('start', help='starts up an HPC fleet')
+    _start.add_argument('--fleet_name', type=str, default=None,
                        help='Fires up an HPC fleet with the provided name')
-    pstart.set_defaults(func=start)
+    _start.set_defaults(func=start)
 
-    pstop = subparsers.add_parser('stop', help='stops an HPC fleet')
-    pstop.add_argument('fleet_name', type=str, default=None,
+    # stop running clusters
+    _stop = subparsers.add_parser('stop', help='stops an HPC fleet')
+    _stop.add_argument('--fleet_name', type=str, default=None,
                        help='Shuts down an HPC fleet with the provided name')
-    pstop.set_defaults(func=stop)
+    _stop.set_defaults(func=stop)
 
-    pstatus = subparsers.add_parser('status', help='pull current status of the fleet')
-    pstatus.add_argument("fleet_name", type=str, default=None,
-                        help='show the status of cfncluster with the provided name.')
-    pstatus.set_defaults(func=status)
+    # get the status of clusters
+    _status = subparsers.add_parser('status',
+                                    help='pull current status of the fleet')
+    _status.add_argument('--fleet_name', type=str, default=None,
+                   help='show the status of cfncluster with the provided name.')
+    _status.set_defaults(func=status)
 
-    plist = subparsers.add_parser('list', help='display a list of stacks associated with fleet')
-    plist.set_defaults(func=list)
+    # list stacks -- P.S. what are stacks?
+    _list = subparsers.add_parser('list',
+                          help='display a list of stacks associated with fleet')
+    _list.add_argument('--stack-name', type=str, default=None,
+                       help='Name of the stack name you wish to list')
+    _list.set_defaults(func=list)
 
-    pinstances = subparsers.add_parser('instances', help='display a list of all instances in a fleet')
-    pinstances.add_argument("fleet_name", type=str, default=None,
+    # list all the instances in a fleet
+    _instances = subparsers.add_parser('instances',
+                              help='display a list of all instances in a fleet')
+    _instances.add_argument("fleet_name", type=str, default=None,
                         help='show the status of fleet with the provided name.')
-    pinstances.set_defaults(func=instances)
+    _instances.set_defaults(func=instances)
 
-    pconfigure = subparsers.add_parser('configure', help='creating initial fleet configuration')
-    pconfigure.set_defaults(func=configure)
+    # create fleet config
+    _configure = subparsers.add_parser('configure',
+                                    help='creating initial fleet configuration')
+    _configure.set_defaults(func=configure)
 
-    pversion = subparsers.add_parser('version', help='display version of fleet')
-    pversion.set_defaults(func=version)
+    # ssh
+    _ssh= subparsers.add_parser('ssh',
+                    help='Runs ssh to the master node, with username and ip\n'+\
+                                      'filled in based on the provided cluster')
+    _ssh.set_defaults(func=ssh)
 
+    # get version
+    _version = subparsers.add_parser('version',
+                                    help='display version of fleet')
+    _version.set_defaults(func=version)
+
+    # parse 'em
     args = parser.parse_args()
     # logger.debug(args)
-    args.func(args)
+    args.func(args, config) # trigger the functions which were specified by the args
