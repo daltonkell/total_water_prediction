@@ -8,7 +8,6 @@ import os
 import requests
 from warrant.aws_srp import AWSSRP # warrant for AWS Cognito authentication
 from warrant.exceptions import ForceChangePasswordException
-from verify import Verify
 
 def login(args, config):
     """Log into your FLEET account
@@ -32,29 +31,30 @@ def login(args, config):
         else:
             username = args.user
 
-        # API will be expecting a POST request (most likely)
+
+        if cognito.get('password', None): # use password in config if it exists
+            password = cognito['password']
+        else:
+            password = getpass.getpass('Enter password:')
+        print('Printing password for testing purposes: \n\t"{}"'.format(password))
+
+
+        token = generate_token(username, password, cognito)
+
+        # send a POST request with the token in the header
         cred_post = requests.post(
             api['login'],
             headers={
                 'username': username,
-                # this will probably contain the password as well,
-                # possibly the below tokens
+                'cognitoToken': token,
+                'keys_url': cognito['keys_url'],
+                'client_id': cognito['client_id']
                 }
             )
-        if cred_post.status_code == 200:
-            print(cred_post.text)
 
-        password = getpass.getpass('Enter password:')
-        print('Printing password for testing purposes: \n\t"{}"'.format(password))
+        print(cred_post.text)
 
-        # TODO generate token
-        token = generate_token(username, password, cognito)
-
-        # verify the token
-        verify = Verify()
-        verify.verify_token(token)
-
-def generate_token(username, password):
+def generate_token(username, password, cognito):
     """Generate a Cognito token
 
     :param str username: username

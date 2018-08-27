@@ -1,6 +1,7 @@
-from flask import Flask, request, jsonify, Response
 import os
 import sys
+from flask import Flask, request, jsonify, Response
+from verify import Verify
 
 # instantiate the application
 app = Flask(__name__)
@@ -22,7 +23,16 @@ def fleet_welcome(): # can't put parameters into this
         r = Response(response='You are now ready to log in', status=200)
     elif request.method == 'POST':
         user = request.headers['username']
-        # within here there will be some sort of authentication
+        keys_url = request.headers['keys_url']
+        token = request.headers['cognitoToken']
+        client_id = request.headers['client_id']
+        # verify the token
+        verify = Verify()
+        claims = verify.verify_token(token, keys_url, client_id)
+        if not claims:
+            print('\nUnverified token given\n')
+            r = Response(response='Your token is invalid', status=400) # 400?
+        print('\nUser {} has been verified successfully\n'.format(user))
         welcome = '\n{:*^80}\n'.format('  Welcome to FLEET, {}  '.format(user))
         r = Response(response=welcome, status=200)
     else:

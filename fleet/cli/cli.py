@@ -5,14 +5,11 @@ import logging
 import os
 import requests
 import sys
-
 from fleet.cli.login import login
 
 # Parse configuration
 config = configparser.ConfigParser()
 config.read(['.fleet.cfg', os.path.expanduser('../../.fleet.cfg')])
-# cognito = config['cognito'] # cognito information
-# api = config['API'] # api connection information
 
 def create(args):
     """
