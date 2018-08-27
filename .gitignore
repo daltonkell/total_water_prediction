@@ -103,3 +103,16 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+# server configuration files
+server.cfg
+
+# AWS Cognito configuration files
+.fleet.cfg
+
+# Flask config files
+config.json
+
+# any development notes
+.authentication.md
+.devstatus.md
