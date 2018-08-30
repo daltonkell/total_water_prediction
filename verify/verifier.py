@@ -62,3 +62,14 @@ class Verify(object):
             return False
         print('\nCLAIMS\n{:*^120}\n{}\n{:*^120}\n'.format('', uvclaims, ''))
         return uvclaims
+
+# IDEA Let's make a decorator here which we can wrap the routes with. This
+# decorator will check (local?) (global?) variables for a set of claims and
+# confirm whether the token has expired or not, or has the correct permissions
+# for the particular service that route will link to
+class Gatekeeper(object): # lol
+    """Decorator. Check to see if a token is expired, and has the allowed
+    permissions to use a particular service."""
+
+    def __init__(self, func, claims):
+        pass
