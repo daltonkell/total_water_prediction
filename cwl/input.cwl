@@ -2,4 +2,11 @@
 
 cwlVersion: v1.0
 class: CommandLineTool
-baseCommand
+baseCommand: echo
+inputs:
+  atmospheric:
+    type: string
+  ocean:
+    type: string
+  river:
+    type: string

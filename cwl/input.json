@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/schema#",
+  "description": "A JSON schema describing required and optional execution inputs",
+  "type": "string",
+  "required": [
+    "atmospheric",
+    "ocean"
+  ],
+  
+  "properties": {
+    "atmospheric": {
+      "type": "string"
+    },
+    "ocean": {
+      "type": "string"
+    }
+  }
+
+}
