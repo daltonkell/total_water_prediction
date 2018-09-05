@@ -5,7 +5,9 @@ import logging
 import os
 import requests
 import sys
+import tempfile
 from fleet.cli.login import login
+from cwl import CWLHandler
 
 # Parse configuration
 config = configparser.ConfigParser()
@@ -135,10 +137,18 @@ def stop(args, config):
     print('Stops an HPC fleet "{}"'.format(args))
 
 
+def test_cwl(args, config): # NOTE config doesn't do anything for development, this ish is hardcoded
+    """Test the basic functionality of a CWL workflow"""
+    
+    cwl = CWLHandler()
+    # test the CWL writer
+    cwl.invoke_cwl() # pass the filepath so cwl-runner can handle this
+
+
 # logging configuration
 
 # -----------
-# CLI OPTIONS # NOTE these may be moved out eg `login()` to preserve readability
+# CLI OPTIONS # NOTE these may be moved out like `login()` to preserve readability
 # -----------
 
 def main():
@@ -245,6 +255,11 @@ def main():
     _version = subparsers.add_parser('version',
                                     help='display version of fleet')
     _version.set_defaults(func=version)
+
+
+    # DEVELOPMENT ===
+    _test_cwl = subparsers.add_parser('test_cwl', help='test CWL')
+    _test_cwl.set_defaults(func=test_cwl)
 
     # parse 'em
     args = parser.parse_args()

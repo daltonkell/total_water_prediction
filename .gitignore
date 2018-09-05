@@ -116,3 +116,7 @@ config.json
 # any development notes
 .authentication.md
 .devstatus.md
+
+# testing stuff for cwl
+cwl/workflows
+cwl/schemas
