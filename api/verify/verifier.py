@@ -28,7 +28,8 @@ class Verify(object):
 
     def verify_token(self, token, keys_url, client_id, keys=None):
         """
-        Verify a user's token hasn't been tampered with.
+        Verify a user's token hasn't been tampered with. Returns claims after 
+        verification.
 
         :param dict token: JWT to verify
         :param str keys_url: URL to get public keys
@@ -67,7 +68,7 @@ class Verify(object):
 # decorator will check (local?) (global?) variables for a set of claims and
 # confirm whether the token has expired or not, or has the correct permissions
 # for the particular service that route will link to
-class Gatekeeper(object): # lol
+class Gatekeeper(object):
     """Decorator. Check to see if a token is expired, and has the allowed
     permissions to use a particular service."""
 

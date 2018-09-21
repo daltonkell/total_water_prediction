@@ -90,6 +90,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+run_env
 
 # Spyder project settings
 .spyderproject
@@ -110,6 +111,9 @@ server.cfg
 # AWS Cognito configuration files
 .fleet.cfg
 
+# temporary JWT file
+jwt.tmp
+
 # Flask config files
 config.json
 
@@ -118,5 +122,10 @@ config.json
 .devstatus.md
 
 # testing stuff for cwl
-cwl/workflows
-cwl/schemas
+workflows/
+schemas/
+test_cwl.sh
+*.test*
+api/cwl/templates/cwls/*
+api/cwl/templates/jobs/*
+api/scripts/*
