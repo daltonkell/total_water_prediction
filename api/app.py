@@ -113,26 +113,28 @@ def select_cwl():
     if not job_title: # default timestamp: year, month, day, hr, min, sec
         t = datetime.now().strftime('%Y%m%dT%H:%M:%S')
         job_title = 'job_{}'.format(t)
-    fp = 'cwl/templates/cwls/{}'
-    cwls = {} # empty dict, will be filled with cwls as payload
+    fp = 'cwl/templates/cwls/{}'.format(cwlfp)
+    # create an input template
+    tpl = CWLHandler.gen_template(fp) # returns a str
+    req, opt = CWLHandler.ro_inputs(tpl) # get required, optional inputs
+    # send back the required and optional types along with workflow
     with open(fp.format(cwlfp)) as _wkflow:
-        wkflow = safe_load(_wkflow)
-        # iterate through workflow steps and get each individual CWL file
-        for step in wkflow['steps'].keys():
-            _cwl = wkflow['steps'][step].get('run') # get the name of each cwl
-            with open(fp.format(_cwl)) as cwl_:
-                cwl = safe_load(cwl_) # load as dict
-                _cwl_ = conv.convert(cwl) # converted to JSON
-                cwls[_cwl] = _cwl_ # set as key-value pair in payload
+        wkflow = _wkflow.read() # read string
         # send back a response that triggers questions for job inputs
-        m = 'provide job inputs'
         # add the cwlfp to the global storage dict, under the job title
         if (claims['email'] in gstor.keys()) and \
             ('jobs' in gstor[claims['email']].keys()): # don't overwrite existing
-            gstor[claims['email']]['jobs'].update({job_title: {'requested_workflow': cwlfp}})
-        else:
-            gstor[claims['email']] = {'jobs': {job_title: {'requested_workflow': cwlfp}}}
-        payload = {'cwls': cwls} # create payload and dump as JSON
+            gstor[claims['email']]['jobs'].update(
+                {
+                    job_title: {'requested_workflow': cwlfp, 'job': tpl}
+                }
+           )
+        else: # create new
+            gstor[claims['email']] = {
+                'jobs': {job_title: {'requested_workflow': cwlfp, 'job': tpl}}
+            }
+        # create payload and dump as JSON
+        payload = {'workflow': wkflow, 'required': req, 'optional': opt} 
         return Response(response=json.dumps(payload), status=200)
 
 @app.route('/setup-run/load-job-input', methods=['POST'])
@@ -152,33 +154,22 @@ def load_user_inputs():
         return Response(response='Invalid token', status=401)
     email = claims['email'] # for easier access
     cwlfp = req.form.get('cwl')
-    job_title = req.form.get('job_title')
+    job_title = req.form.get('job_title') # title given by user
     errors = {}
     with open('cwl/templates/cwls/{}'.format(cwlfp)) as _cwl:
         conv = Converter()
         handler = CWLHandler() # instantiate handler
-        cwl_dict = safe_load(_cwl) # dict from YAML
-        # get the job JSON from the job header 
-        jobjson = req.form.get('job') # use in validation and YAML
-        # because filenames are the same, replace the extesion
-        jobfp = os.path.splitext(cwlfp)[0]+'.yml'
-        _jobymlstr = handler.job_from_json(jobjson, jobfp) # YAML str
-        job_json_dict = safe_load(_jobymlstr) # dict from YAML
-        # convert each CWL to JSON so we can validate
-        valid = True
-        for step in cwl_dict.get('steps').keys():
-            fp = cwl_dict['steps'][step].get('run') # get fp, load as dict
-            with open('cwl/templates/cwls/{}'.format(fp)) as _cwl:
-                cwl_ = safe_load(_cwl)
-                cwl_json_dict = conv.convert(cwl_) # valid JSONSchema dict
-                _valid, errs = handler.validate(job_json_dict, cwl_json_dict)
-                if _valid:
-                    continue
-                else: # put errors into dict and send back
-                    errors.update({fp: errs})
-                    valid = False
+        job_inputs = req.form.get('job_inputs') # use in validation and YAML
+        tpl = gstor.get(email).get('jobs').get(job_title).get('job')
+        if not tpl: 
+            return Response(response='No jobs created', status=404) # not found
+        filled_tpl = handler.job_from_json(job_inputs, tpl) # create filled YAML template
+        job_dict = safe_load(filled_tpl) # dict from YAML
+        cwl_ = safe_load(_cwl)
+        cwl_schema = conv.convert_workflow(cwl_) # valid JSONSchema Workflow
+        valid, errs = handler.validate(job_dict, cwl_schema)
         if valid: # add to gstor
-            gstor[email]['jobs'][job_title]['job_str'] = _jobymlstr
+            gstor[email]['jobs'][job_title]['job_str'] = filled_tpl
     pld = {'errors': errors}
     r = Response(response=json.dumps(pld), status=200)
     return r

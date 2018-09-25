@@ -8,11 +8,9 @@ import requests
 import sys
 import tempfile
 from datetime import datetime
-from fleet.cli.ask_job import ask
+from fleet.cli.ask_job import ask, ask_wkflow
 from cwl2json import Converter
 from yaml import safe_load, dump
-
-import pdb
 
 # Get root of project and parse configuration file(s)
 config = configparser.ConfigParser()
@@ -236,18 +234,19 @@ def setup_run(args, config):
         return
     # invoke the questions prompt; iterate through each CWL key
     job_input_dict = {} # initialize empty dict to be updated
-    for fn in r.json().get('cwls').keys():
-        cwl = r.json()['cwls'][fn] # this is a dict
-        out = {}
-        print('The upcoming prompt was generated from the following CWL: \
-              \n{}'.format(fn))
-        print(dump(cwl, default_flow_style=False)) # print out the dict nicely
-        job_input_dict.update(ask(cwl, out)) # ask the user questions
+    
     # send the inputs back as JSON
-    job_ = json.dumps(job_input_dict)
+    print('You requested the following Workflow: \n')
+    wkflow = r.json().get('workflow', None)
+    print(wkflow)
+    print('\n')
+    _req = r.json().get('required') # dict, but only because we're using requests lib...
+    _opt = r.json().get('optional')
+    job_input_dict.update(ask_wkflow(_req, _opt))
+    job_inputs = json.dumps(job_input_dict)
     d = {
             'cwl': cwl_file, 
-            'job': job_,
+            'job_inputs': job_inputs,
             'job_title': title, 
         }
     h = {'token': token}
