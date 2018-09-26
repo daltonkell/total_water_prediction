@@ -4,13 +4,12 @@ import getpass
 import json
 import logging
 import os
-import requests
-import sys
-import tempfile
 from datetime import datetime
 from fleet.cli.ask_job import ask, ask_wkflow
-from cwl2json import Converter
-from yaml import safe_load, dump
+from urllib.error import HTTPError
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
+import pdb
 
 # Get root of project and parse configuration file(s)
 config = configparser.ConfigParser()
@@ -159,34 +158,94 @@ def execute(args, config):
     api = config['API']
     if not args.job: # users would supply name of workflow to execute
         hdrs = {'token': token}
-        r = requests.get(api['execute-begin'], headers=hdrs) 
+        r = Request(api['execute-begin'], headers=hdrs)
         # if marked as unverified, we must login first to get a new token
-        if r.status_code in [401, 406]:
+        try:
+            resp = urlopen(r)
+        except HTTPError as e:
             # TODO deal with plain 400
-            print('Your token is unverified. Please log in for another token.')
-            login(args, config) # trigger login method
+            if resp.getcode() in [401, 406]:
+                print('Your token is unverified. Please log in for another token.')
+                login(args, config) # trigger login method
+            else:
+                print('Expected a 401 or 406, got a {}'.format(e.getcode()))
             return
         # print out options to command line
+        jsn = json.loads(resp.read().decode())
+        execs = jsn.get('executable_options')
         print('\nPlease select a job and re-run this command'\
-              ' with the `--job <job_title>` option to execute.')
-        print(r.json()) # contains the executable options
-        sys.exit()
+              ' with the `--job <job_title>` option to execute.\n')
+        print('Executable Jobs\n---------------')
+        for _e in execs:
+            print(_e)
+        return
     elif args.job:
         job_title = args.job
         hdrs = {'token': token}
-        pld = {'job_title': job_title} 
-        r = requests.post(api['execute-workflow'], data=pld, headers=hdrs)
+        pld = {'job_title': job_title}
+        r = Request(api['execute-workflow'], data=urlencode(pld).encode(), headers=hdrs)
+        #r = requests.post(api['execute-workflow'], data=pld, headers=hdrs)
         # we expect a response to ask us questions
-        if r.status_code == 401:
-            print('Uh oh, looks like your token has expired. Please re-login.')
-            return
-        if r.status_code == 406:
-            print('You need to finish setting up the run before proceeding.\
-                   Re-run the `setup-run` command with your CWL selection.')
+        try:
+            resp = urlopen(r)
+        except HTTPError as e:
+            if e.getcode() == 401:
+                print('Uh oh, looks like your token has expired. Please re-login.')
+                return
+            elif e.getcode() == 406:
+                m = 'You need to finish setting up the run before proceeding.'+\
+                    '  Re-run the `setup-run` command with your CWL selection.'
+                print(m)
+            else:
+                print('Expected 401, 406, got {}'.format(e.getcode()))
             return
         # print out the output from the execution
-        print(r.json())
+        jsn = json.loads(resp.read().decode())
+        print(jsn)
         return
+
+def login(args, config):
+    """Makes a POST request to the API with a username and password and in turn
+    receives a JWT. Writes the JWT to a local file, which will be passed inside
+    the headers of every other request.
+
+    :param argparse.ArgumentParser.arguments args: args from cmd line
+    :param configparser.ConfigParser config: parser loaded with config file"""
+ 
+    api = config['API']
+    username = args.__dict__.get('user')
+    if not username:
+        username = input('Enter username: ')
+    password = getpass.getpass('Enter password: ')
+    # send POST request to login with username and password
+    pld = {'username': username, 'password': password}
+    h = {'blank': 'header'}
+    r = Request(api['login'], data=urlencode(pld).encode(), headers=h, method='POST')
+    try:
+        resp = urlopen(r)
+    except HTTPError as e:
+        if e.getcode() == 401:
+            print('Your account is not authorized for this action')
+        if e.getcode() == 406: # unacceptable
+            print('406 mate, you sent something bad')
+        print('Bad login detected. Please check your username/password.')
+        return
+    hdr_in = {}
+    for i in resp.getheaders():
+        hdr_in[i[0]] = i[1] # create dict from list of tuples 
+    token = hdr_in.get('token')
+    exp = hdr_in.get('exp') # expiration
+    _ex = datetime.fromtimestamp(int(exp))
+    ex = _ex.strftime('%Y-%m-%dT%H:%M:%S')
+    # write JWT to local tempfile--can be overwritten with new JWTs
+    # TODO make tempfile ~/.jwt or something
+    tmp = 'jwt.tmp'
+    pth = os.getcwd()
+    with open(os.path.join(pth, tmp), 'w+') as _jwt:
+        _jwt.write(token) # write token to file
+    expr = ' Your session will expire at {} '.format(ex)
+    m = '\n{:*^80}\n{:*^80}\n'.format('  Welcome to FLEET, {}  '.format(username), expr)
+    print(m)
 
 
 def setup_run(args, config):
@@ -200,48 +259,59 @@ def setup_run(args, config):
     :param argparse.ArgumentParser.arguments args: args from cmd line
     :param configparser.ConfigParser config: parser loaded with config file""" 
 
-    #TODO
-    """If components are missing from the job file, the API sends a prompt to 
-    the user to supply the necessary information."""
-
     token = jwtfile.read() # read the JWT so we can send it in the header
     api = config['API']
     if not args.cwl: # beginning of process
         # request to get available options
         hdrs = {'begin-setup': 'True', 'token': token}
-        r = requests.get(api['setup-run-start'], headers=hdrs)
-        # if marked as unverified, we must login first to get a new token
-        if r.status_code in [401, 406]:
+        r = Request(api['setup-run-start'], headers=hdrs)
+        try:
+            resp = urlopen(r)
+            # if marked as unverified, we must login first to get a new token
+        except HTTPError as e:
             # TODO deal with plain 400
-            print('Your token is unverified. Please log in for another token.')
-            login(args, config) # trigger login method
-            return
+            if e.code in [401, 406]:
+                print('Your token is unverified. Please log in for another token.')
+                login(args, config) # trigger login method
+                return
+            else:
+                print('Was expecting a 401 or 406, got a {}'.format(e.code))
+                return
         # print out options to command line
+        jsn = json.loads(resp.read().decode()).get('opts', None)
         print('\nPlease select a CWL and job (.yml) file and re-run this command'\
-              ' with the `--cwl <cwl>` options:\n')
-        print(r.json())
-        sys.exit()
-    # get the .cwl
-    cwl_file = args.cwl
+              ' with the `--cwl <cwl>` option:\n')
+        print('Available Options\n----------------')
+        for k, v in jsn.items():
+            print('{}: {}'.format(k, v))
+        return
+    cwl_file = args.cwl # get the .cwl
     # ask for a job title so the sevrer can store this
     title = input('Please enter a title for the job you are creating: ')
     hdrs = {'cwl-input': 'True', 'cwl': cwl_file, 'token': token}
     pld = {'cwl': cwl_file, 'job_title': title}
-    r = requests.post(api['setup-run-select-wkflow'], data=pld, headers=hdrs)
-    # we expect a response to ask us questions
-    if r.status_code in [401, 406]:
-        print('Uh oh, looks like your token has expired. Please re-login.')
+    r = Request(api['setup-run-select-wkflow'], data=urlencode(pld).encode(), headers=hdrs, method='POST')
+    try:
+        resp = urlopen(r)
+        # we expect a response to ask us questions
+    except HTTPError as e:
+        if e.getcode() in [401, 406]:
+            print('Uh oh, looks like your token has expired. Please re-login.')
+        elif e.getcode() == 404: # notfound
+            print('A template couldn\'t be properly generated for that Workflow.')
+        else:
+            print('Expected 401, 404, 406, got {}'.format(e.getcode()))
         return
     # invoke the questions prompt; iterate through each CWL key
     job_input_dict = {} # initialize empty dict to be updated
-    
     # send the inputs back as JSON
     print('You requested the following Workflow: \n')
-    wkflow = r.json().get('workflow', None)
+    jsn = json.loads(resp.read().decode()) # bytes to str to dict
+    wkflow = jsn.get('workflow', None)
     print(wkflow)
     print('\n')
-    _req = r.json().get('required') # dict, but only because we're using requests lib...
-    _opt = r.json().get('optional')
+    _req = jsn.get('required') # dict, but only because we're using requests lib...
+    _opt = jsn.get('optional')
     job_input_dict.update(ask_wkflow(_req, _opt))
     job_inputs = json.dumps(job_input_dict)
     d = {
@@ -250,48 +320,23 @@ def setup_run(args, config):
             'job_title': title, 
         }
     h = {'token': token}
-    r = requests.post(api['setup-run-job-input'], data=d, headers=h)
-    if not r.json().get('errors') == None: 
+    r = Request(api['setup-run-job-input'], data=urlencode(d).encode(), headers=h, method='POST')
+    try:
+        resp = urlopen(r)
+    except HTTPError as e:
+        if e.getcode() in [401, 406]:
+            print('Token expired; please re-login')
+        else:
+            print('Huh?')
+        return
+    jsn = json.loads(resp.read().decode())
+    if jsn.get('errors', {}) == {}: # empty dict means no errors!
         print('Your JOB sucessfully validated.')
     else: # print all errors and ask person to do it again
-        print(r.json.get('errors'))
+        #print(r.json.get('errors'))
+        print(jsn.get('errors'))
     return
 
-
-def login(args, config):
-    """Makes a POST request to the API with a username and password and in turn
-    receives a JWT. Writes the JWT to a local file, which will be passed inside
-    the headers of every other request.
-
-    :param argparse.ArgumentParser.arguments args: args from cmd line
-    :param configparser.ConfigParser config: parser loaded with config file"""
- 
-    api = config['API']
-
-    username = args.user
-    if not username:
-        username = input('Enter username: ')
-    password = getpass.getpass('Enter password: ')
-    # send POST request to login with username and password
-    pld = {'username': username, 'password': password}
-    r = requests.post(api['login'], data=pld)
-    if r.status_code == 401: # unauthorized
-        print('401 mate')
-        print('Bad login detected. Please check your username/password.')
-        return
-    token = r.headers.get('token')
-    exp = r.headers.get('exp') # expiration
-    _ex = datetime.fromtimestamp(int(exp))
-    ex = _ex.strftime('%Y-%m-%dT%H:%M:%S')
-    # write JWT to local tempfile--can be overwritten with new JWTs
-    # TODO make tempfile ~/.jwt or something
-    tmp = 'jwt.tmp'
-    pth = os.getcwd()
-    with open(os.path.join(pth, tmp), 'w+') as _jwt:
-        _jwt.write(token) # write token to file
-    expr = ' Your session will expire at {} '.format(ex)
-    m = '\n{:*^80}\n{:*^80}\n'.format('  Welcome to FLEET, {}  '.format(username), expr)
-    print(m)
 
 # logging configuration?
 

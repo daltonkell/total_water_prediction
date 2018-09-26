@@ -89,7 +89,7 @@ def setup_run():
         # list the available options
         # NOTE is this code safe here, or is this path condisidered relative?
         # TODO: list options in a prettier way
-        opts = list(enumerate([f for f in os.listdir('cwl/templates/cwls')])) # if f.endswith('.cwl')]
+        opts = list(enumerate([f for f in os.listdir('cwl/templates/cwls') if 'workflow' in f]))
         _opts = {str(i[0]): i[1] for i in opts}
         pload={'opts': _opts}
         r = Response(response=json.dumps(pload), status=200)
@@ -116,6 +116,8 @@ def select_cwl():
     fp = 'cwl/templates/cwls/{}'.format(cwlfp)
     # create an input template
     tpl = CWLHandler.gen_template(fp) # returns a str
+    if not tpl:
+        return Response(status=404) # unable to create template
     req, opt = CWLHandler.ro_inputs(tpl) # get required, optional inputs
     # send back the required and optional types along with workflow
     with open(fp.format(cwlfp)) as _wkflow:
