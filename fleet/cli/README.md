@@ -44,14 +44,17 @@ optional arguments:
                         specify a specific region to connect to
 ```
 
-A note to those developing: when installing using ```python setup.py ...```,
+A note to those developing: when installing using `$ python setup.py ...`,
 make sure to use the ```develop``` optional command to make changes to your
 code instantly available in the installed module.
 
-### Configuration File(s)
-In order to use `fleet`, you'll need two configuration files.
+### Portability
+`fleet` is written in pure Python with an emphasis on being lightweight and platform-agnostic. This command line tool uses no external libraries, so all you need to use it is a working Python 3 interpreter.
 
-1. `.fleet.cfg` contains Cognito-specific information and is placed in the root directory:
+### Configuration File(s)
+In order to use `fleet`, you'll need a configuration file:
+
+`.fleet.cfg` contains Cognito-specific information and is placed in the `/fleet/` directory:
     - pool_id
     - client_id
     - identity_pool_id

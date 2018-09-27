@@ -9,7 +9,6 @@ from fleet.cli.ask_job import ask, ask_wkflow
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
-import pdb
 
 # Get root of project and parse configuration file(s)
 config = configparser.ConfigParser()
@@ -248,6 +247,54 @@ def login(args, config):
     print(m)
 
 
+def register(args, config):
+    """Allows a user to register an account from the Command Line
+
+    :param argparse.ArgumentParser.arguments args: args from cmd line
+    :param configparser.ConfigParser config: parser loaded with config file"""
+
+    api = config['API']
+    r = Request(api['register'], method='GET')
+    try:
+        resp = urlopen(r)
+    except HTTPError as e:
+        print('UH OH!')
+        return
+    # read in the template we got from the server
+    jsn = json.loads(resp.read().decode())
+    out = {}
+    reqs = jsn.get('RegistrationRequirements')
+    w = """
+| *---------------------------------------------------------------* |
+| Welcome to FLEET, new user! Please follow the prompt to register. |
+| *---------------------------------------------------------------* |
+"""
+    print(w)
+    print('\nPlease provide the following information: \n')
+    for k, v in reqs.items(): # prompt and assign to out
+        m = '{} (Requirements: {}): '.format(k, v)
+        if k.lower() == 'password':
+            out[k.lower()] = getpass.getpass(m) # make keys lowercase
+        else:
+            out[k.lower()] = input(m)
+    r = Request(
+        api['register'], data=urlencode({'RegistrationInfo': out}).encode(), 
+        method='POST'
+    )
+    try:
+        resp = urlopen(r)
+        jsn = json.loads(resp.read().decode())
+    except HTTPError as e:
+        print('Something went wrong processing your request to register')
+        return
+    if jsn.get('errors'):
+        print('Some errors were found. Please fix the following and retry:\n')
+        for e in jsn.get('errors'):
+            print(e)
+    else:
+        info = jsn.get('registered')
+        print('You have been successfully registered:\n{}'.format(info))
+
 def setup_run(args, config):
     """Allow a user to set up a model run from the ground up. Sends a GET
     request to /setup-run and receives a list of available .cwl and job .yml
@@ -287,7 +334,9 @@ def setup_run(args, config):
         return
     cwl_file = args.cwl # get the .cwl
     # ask for a job title so the sevrer can store this
-    title = input('Please enter a title for the job you are creating: ')
+    title = None
+    while not title: # can't skip
+        title = input('Please enter a title for the job you are creating: ')
     hdrs = {'cwl-input': 'True', 'cwl': cwl_file, 'token': token}
     pld = {'cwl': cwl_file, 'job_title': title}
     r = Request(api['setup-run-select-wkflow'], data=urlencode(pld).encode(), headers=hdrs, method='POST')
@@ -458,6 +507,9 @@ def main():
     _setup_run.add_argument('--cwl', type=str, help='specify a CWL .cwl file')
     _setup_run.add_argument('--job', type=str, help='specify a CWL job file (.yml)')
 
+    _register = subparsers.add_parser('register', help='Register an account')
+    _register.set_defaults(func=register)
+    
     # execute a workflow
     _execute = subparsers.add_parser('execute', help='Execute a created job')
     _execute.set_defaults(func=execute)

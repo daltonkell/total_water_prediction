@@ -5,6 +5,7 @@ from warrant.exceptions import ForceChangePasswordException
 import os
 import subprocess
 import sys
+from botocore.exceptions import ParamValidationError
 from cwl import CWLHandler
 from cwl2json import Converter
 from datetime import datetime
@@ -236,6 +237,13 @@ def execute():
         subprocess.run([
                         'cwltool', 
                         '--debug', # cwl and job will be uploaded to wherever this is running
+                        '--timestamps', # adds timestamps to notifications, etc
+                        #'--print-pre',           # Print CWL document after preprocessing.
+                        #'--print-deps',         # Print CWL document dependencies.
+                        #'--print-input-deps',    # Print input object document dependencies.
+                        #'--pack',                # Combine components into single document and print.
+                        #'--version',             # Print version and exit
+                        #'--validate',            # Validate CWL document only.
                         os.path.join(dir_, 'cwl', 'templates', 'cwls', wkflow),  
                         os.path.abspath(_job.name) # read the temporary file
                        ])
@@ -267,6 +275,70 @@ def login():
         hdrs = {'error': e}
         r = Response(headers=hdrs, status=401) # return bad login
     return r
+
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    """Endpoint for users to hit when they register in the Identity Pool."""
+
+    req = request
+    client = boto3.client('cognito-idp', region_name=conf['region'])
+    pool_id = conf['pool_id']
+    client_id = conf['client_id']
+
+
+    if req.method == 'GET': # user is asking to sign up
+        # TODO get template of how user pool is configured (required attrs
+        # for users, etc) so we can send that back to client to ask
+        # the user to supply necessary info when registering
+        #desc = client.describe_user_pool(UserPoolId=pool_id) # SAYS USER POOL DOESN'T EXIST??
+        t = {
+                'RegistrationRequirements': {
+                     'Username': 'string',
+                     'Password': '>= 8 chars, numbers, special chars, lower/uppercase', #NOTE password must satisfy our policy
+                     'email':    'valid email',
+                     'Institution': 'string',
+                }
+        }
+        r = Response(response=json.dumps(t), status=200)
+        return r
+    if req.method == 'POST': # user giving us stuff
+        _info = req.form.get('RegistrationInfo')
+        if not _info:
+            return Response(status=406) # unacceptable, need more info
+        _info = _info.replace("'", '"') # replace with double quotes for JSON
+        info = json.loads(_info) # NOTE need safe load?
+        inpt = {
+            'ClientId': client_id,
+            'Username': info.get('username'),
+            'Password': info.get('password'),
+            'UserAttributes': [ #NOTE there may be multiple attrs; dict-list comp?
+                {    
+                    'Name': 'email',
+                    'Value': info.get('email')
+                },
+                #{   # Custom attrs must begin with custom:
+                #    'Name': 'custom:Institution',
+                #    'Value': info.get('institution')
+                #},
+            ],
+        }
+        d = {}
+        try:
+            errors = [] # error to return to client (if any)
+            registered = client.sign_up(**inpt) # unpack the dict
+            d['registered'] = registered
+        except ParamValidationError as e: #TODO which exception?
+            for err in e.args:
+                errors.append(err)
+        except Exception as e:
+            # TODO get more precise list of which exceptions from botocore
+            for err in e.args:
+                errors.append(err)
+        d['errors'] = errors # assign to payload
+        r = Response(json.dumps(d), status=200)
+        return r
+
 
 def generate_token(username, password):
     """Generate a Cognito token

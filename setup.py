@@ -10,7 +10,7 @@ def read(fname):
 console_scripts = ['fleet = fleet.cli.cli:main']
 version = '0.0.2'
 # minimal depedencies
-requires = ['boto3', 'flask', 'requests']
+requires = []
 # additional data needed
 pkg_data = {}
 

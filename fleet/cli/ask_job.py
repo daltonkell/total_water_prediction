@@ -42,12 +42,14 @@ def ask_wkflow(required, optional):
     for k, v in required.items():
         m = '"{}" is a required field, with type "{}". '.format(k, v['type'])+\
             'Please provide a value for it: '
-        inp = input(m)
-        if v['type'] in fields.keys():
-            insert = fields[v['type']] # get value and use as nested key
-            out[k] = {insert: inp}
-        else:
-            out[k] = inp # assign key-value
+        inp = None
+        while not inp: # users cannot continue unless they enter a value
+            inp = input(m)
+            if v['type'] in fields.keys():
+                insert = fields[v['type']] # get value and use as nested key
+                out[k] = {insert: inp}
+            else:
+                out[k] = inp # assign key-value
     for k, v in optional.items():
         m = '"{}" is an optional input of type "{}"; '.format(k, v['type'])+\
             'Provide an input, or press [Enter] to skip.'
